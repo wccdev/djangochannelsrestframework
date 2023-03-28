@@ -2,20 +2,20 @@ import json
 import typing
 from collections import defaultdict
 from functools import partial
-from typing import Dict, List, Type, Any, Set
+from typing import Any
 
 from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
 from django.http import HttpRequest, HttpResponse
 from django.http.response import Http404
 from django.template.response import SimpleTemplateResponse
-from rest_framework.exceptions import PermissionDenied, MethodNotAllowed, APIException
+from rest_framework.exceptions import APIException, MethodNotAllowed, PermissionDenied
 from rest_framework.permissions import BasePermission as DRFBasePermission
 from rest_framework.response import Response
 
+from djangochannelsrestframework.permissions import WrappedDRFPermission
+from djangochannelsrestframework.scope_utils import ensure_async, request_from_scope
 from djangochannelsrestframework.settings import api_settings
-from djangochannelsrestframework.permissions import BasePermission, WrappedDRFPermission
-from djangochannelsrestframework.scope_utils import request_from_scope, ensure_async
 
 
 class APIConsumerMetaclass(type):
@@ -52,14 +52,11 @@ class AsyncAPIConsumer(AsyncJsonWebsocketConsumer, metaclass=APIConsumerMetaclas
     # take the default values set for django rest framework!
 
     permission_classes = api_settings.DEFAULT_PERMISSION_CLASSES
-    # type: List[Type[BasePermission]]
 
     groups = {}
 
     # mapping observer id -> group name ->
-    _observer_group_to_request_id: Dict[str, Dict[str, Set[Any]]] = defaultdict(
-        lambda: defaultdict(set)
-    )
+    _observer_group_to_request_id: dict[str, dict[str, set[Any]]] = defaultdict(lambda: defaultdict(set))
 
     async def websocket_connect(self, message):
         """
@@ -67,9 +64,7 @@ class AsyncAPIConsumer(AsyncJsonWebsocketConsumer, metaclass=APIConsumerMetaclas
         """
         try:
             for permission in await self.get_permissions(action="connect"):
-                if not await ensure_async(permission.can_connect)(
-                    scope=self.scope, consumer=self, message=message
-                ):
+                if not await ensure_async(permission.can_connect)(scope=self.scope, consumer=self, message=message):
                     raise PermissionDenied()
             await super().websocket_connect(message)
         except PermissionDenied:
@@ -124,13 +119,12 @@ class AsyncAPIConsumer(AsyncJsonWebsocketConsumer, metaclass=APIConsumerMetaclas
         Raises an appropriate exception if the request is not permitted.
         """
         for permission in await self.get_permissions(action=action, **kwargs):
-
             if not await ensure_async(permission.has_permission)(
                 scope=self.scope, consumer=self, action=action, **kwargs
             ):
                 raise PermissionDenied()
 
-    async def handle_exception(self, exc: Exception, action: str, request_id):
+    async def handle_exception(self, exc: Exception, action: str, request_id, **kwargs):
         """
         Handle any exception that occurs, by sending an appropriate message
         """
@@ -189,16 +183,14 @@ class AsyncAPIConsumer(AsyncJsonWebsocketConsumer, metaclass=APIConsumerMetaclas
                 await reply(data=data, status=status)
 
         except Exception as exc:
-            await self.handle_exception(exc, action=action, request_id=request_id)
+            await self.handle_exception(exc, action=action, request_id=request_id, **kwargs)
 
-    async def receive_json(self, content: typing.Dict, **kwargs):
+    async def receive_json(self, content: dict, **kwargs):
         request_id = content.pop("request_id")
         action, content = await self.get_action_name(content, **kwargs)
         await self.handle_action(action, request_id=request_id, **content)
 
-    async def get_action_name(
-        self, content: typing.Dict, **kwargs
-    ) -> typing.Tuple[typing.Optional[str], typing.Dict]:
+    async def get_action_name(self, content: dict, **kwargs) -> tuple[str | None, dict]:
         """
         Retrieves the action name from the json message.
 
@@ -209,9 +201,7 @@ class AsyncAPIConsumer(AsyncJsonWebsocketConsumer, metaclass=APIConsumerMetaclas
         action = content.pop("action")
         return (action, content)
 
-    async def reply(
-        self, action: str, data=None, errors=None, status=200, request_id=None
-    ):
+    async def reply(self, action: str, data=None, errors=None, status=200, request_id=None):
         """
         Send a json response back to the client.
 
@@ -252,12 +242,10 @@ class DjangoViewAsConsumer(AsyncAPIConsumer):
 
             content, status = await self.call_view(action=action, **kwargs)
 
-            await self.reply(
-                action=action, request_id=request_id, data=content, status=status
-            )
+            await self.reply(action=action, request_id=request_id, data=content, status=status)
 
         except Exception as exc:
-            await self.handle_exception(exc, action=action, request_id=request_id)
+            await self.handle_exception(exc, action=action, request_id=request_id, **kwargs)
 
     @database_sync_to_async
     def call_view(self, action: str, **kwargs):
@@ -287,7 +275,7 @@ class DjangoViewAsConsumer(AsyncAPIConsumer):
                 # there must be a better way fo doing this?
                 json.dumps(data)
                 return data, status
-            except Exception as e:
+            except Exception:
                 pass
         if isinstance(response, SimpleTemplateResponse):
             response.render()
@@ -296,7 +284,7 @@ class DjangoViewAsConsumer(AsyncAPIConsumer):
         if isinstance(response_content, bytes):
             try:
                 response_content = response_content.decode("utf-8")
-            except Exception as e:
+            except Exception:
                 response_content = response_content.hex()
         return response_content, status
 
@@ -306,7 +294,7 @@ class DjangoViewAsConsumer(AsyncAPIConsumer):
 
 def view_as_consumer(
     wrapped_view: typing.Callable[[HttpRequest], HttpResponse],
-    mapped_actions: typing.Optional[typing.Dict[str, str]] = None,
+    mapped_actions: dict[str, str] | None = None,
 ) -> DjangoViewAsConsumer:
     """
     Wrap a django View to be used over a json ws connection.

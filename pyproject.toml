@@ -1,9 +1,25 @@
 [tool.poetry]
-name = "djangochannelsrestframework"
+name = "wcc-python-sdk-channelsrest"
 version = "0.1.0"
 description = "Django Channels Rest Framework provides a DRF like interface for building channels-v3 websocket consumers."
 authors = ["Your Name <you@example.com>"]
 readme = "README.rst"
+license =  "MIT"
+classifiers=[
+    'Development Status :: 2 - Pre-Alpha',
+    'Intended Audience :: Developers',
+    'License :: OSI Approved :: MIT License',
+    'Natural Language :: English',
+    'Programming Language :: Python :: 3',
+    'Programming Language :: Python :: 3.8',
+    'Programming Language :: Python :: 3.9',
+    'Programming Language :: Python :: 3.10',
+    'Programming Language :: Python :: 3.11',
+]
+packages = [
+    { include = "djangochannelsrestframework" },
+]
+
 
 [tool.poetry.dependencies]
 python = "^3.8"
@@ -22,3 +38,31 @@ sphinx = ">=4.3.2"
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.black]
+line-length = 120
+target-version = ['py39']
+include = '\.pyi?$'
+exclude = '''
+/(
+    \.eggs
+  | \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | venv
+  | _build
+  | buck-out
+  | build
+  | dist
+
+  # The following are specific to Black, you probably don't want those.
+  | blib2to3
+  | tests/data
+  | profiling
+)/
+'''
+
+[tool.isort]
+profile = "black"
