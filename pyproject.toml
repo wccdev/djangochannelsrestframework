@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "wcc-python-sdk-channelsrest"
-version = "0.1.0"
+version = "0.1.1"
 description = "Django Channels Rest Framework provides a DRF like interface for building channels-v3 websocket consumers."
 authors = ["Your Name <you@example.com>"]
 readme = "README.rst"
@@ -19,6 +19,16 @@ classifiers=[
 packages = [
     { include = "djangochannelsrestframework" },
 ]
+
+
+[tool.commitizen]
+version = "0.1.1"
+tag_format = "v$major.$minor.$patch$prerelease"
+version_files = [
+    "pyproject.toml:version",
+    "djangochannelsrestframework/__init__.py"
+]
+
 
 
 [tool.poetry.dependencies]
